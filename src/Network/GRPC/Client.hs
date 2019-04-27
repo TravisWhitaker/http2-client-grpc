@@ -230,8 +230,12 @@ streamReply rpc v0 req handler = RPCCall $ \conn stream isfc osfc encoding decod
             (StreamErrorEvent _ _) ->
                 lift $ throwIO (InvalidState "stream error")
             (StreamDataEvent _ dat) -> do
+                liftIO $ putStrLn "streamReply: About to add credit..."
                 liftIO $ _addCredit isfc (ByteString.length dat)
-                _ <- liftIO $ _consumeCredit isfc (ByteString.length dat)
+                liftIO $ putStrLn "streamReply: Credit added."
+                liftIO $ do putStrLn "streamReply: About to consumeCredit..."
+                            _consumeCredit isfc (ByteString.length dat)
+                            putStrLn "streamreply: Credit consumed."
                 _ <- _updateWindow isfc
                 handleAllChunks decoding v1 hdrs decode dat loop
     } in do
@@ -304,9 +308,19 @@ sendSingleMessage rpc msg encoding flagMod conn connectionFlowControl stream str
     let compress = _getEncodingCompression encoding
     let goUpload dat = do
             let !wanted = ByteString.length dat
+            liftIO $ putStrLn "sendSingleMessage: About to withdraw stream credit..."
             gotStream <- _withdrawCredit streamFlowControl wanted
+            liftIO $ putStrLn $ concat [ "sendSingleMessage: Withrew "
+                                       , show gotStream
+                                       ]
+            liftIO $ putStrLn "sendSingleMessage: About to withdraw connection credit..."
             got       <- _withdrawCredit connectionFlowControl gotStream
+            liftIO $ putStrLn $ concat [ "sendSingleMessage: Withdrew "
+                                       , show got
+                                       ]
+            liftIO $ putStrLn "sendSingleMessage: About to receive credit..."
             liftIO $ _receiveCredit streamFlowControl (gotStream - got)
+            liftIO $ putStrLn "sendSingleMessage: Received credit."
             if got == wanted
             then
                 sendData conn stream flagMod dat
